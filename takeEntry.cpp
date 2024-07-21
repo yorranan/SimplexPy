@@ -138,6 +138,12 @@ vector<double> parser_goal(
     vector<pair<double, int>> values;   // valores dos coeficientes
     for (i = 0; i < tokens.size(); i++)
     {
+        // Se der errado tirar o if
+        if (tokens[i].empty())
+        {
+            continue;
+        }
+        printf(" token[%d] = %s\n", i, tokens[i].c_str());
         tokenParser(tokens[i], &index, value);
         values.push_back(make_pair(value, index));
         if (index > max_index)
@@ -156,7 +162,7 @@ vector<double> parser_goal(
 vector<double> parser(
     string str,
     int &max_index,
-    vector<pair<double,bool>> &slack_value
+    vector<pair<double,int>> &slack_value
     )
 {
     int i = 0;
@@ -241,6 +247,7 @@ vector<double> parser(
     vector<pair<double, int>> values; // valores dos coeficientes
     for (i = 0; i < tokens.size(); i++)
     {
+        printf(" token[%d] = %s\n", i, tokens[i].c_str());
         tokenParser(tokens[i], &index, value);
         values.push_back(make_pair(value, index));
         if (index > max_index)
@@ -278,8 +285,7 @@ FileContent readFile()
 void addSlackVariables(
 vector<vector<double>> &expressions,
 vector<double> &b,
-vector<vector<double>> &N,
-vector<pair<double, bool>> &slack_variables,
+vector<pair<double, int>> &slack_variables,
 int &max_index, vector<double> &goal,
 bool &haveOneBiggerThanZero
 )
@@ -303,15 +309,10 @@ bool &haveOneBiggerThanZero
             haveOneBiggerThanZero = true;
         }
         b.push_back(slack_variables[i].first); 
-        N.push_back(aux_expression[i]);
         // Se no vetor b algum índice for menor que 0, então multiplique toda a restrição por (-1) e inverta o sentido da desigualdade   
         expressions[i].insert(expressions[i].end(), aux_expression[i].begin(), aux_expression[i].end());
         if (slack_variables[i].first < 0)
         {
-            for (int j = 0; j < N[i].size(); j++)
-            {
-                N[i][j] *= -1;
-            }
             b[i] *= -1;
         }
     }
@@ -373,18 +374,29 @@ void writeVectorAtFileC(vector<double> c){
     file.close();
 }
 
+void writeInfosAtFile(int countSlack, int basic_variables){
+    ofstream file("infos.txt");
+    if (!file.is_open())
+    {
+        cerr << "Erro ao abrir o arquivo." << endl;
+    }
+    if (isMaximization) {
+        file << "1 ";
+    } else {
+        file << "0 ";
+    }
+    file << countSlack << " " << basic_variables;
+    file.close();
+}
+
 int main()
 {
     vector<vector<double>> expressions;
-    vector<vector<double>> B;
-    vector<vector<double>> N;
-    vector<int> B_index;
-    vector<int> N_index;
-    vector<vector<double>> b;
+    vector<double> b;
     vector<double> goal;
     bool haveOneBiggerThanZero;
     int max_index = 0;
-    vector<pair<double, bool>> slack_variables;
+    vector<pair<double, int>> slack_variables;
     goal = parser_goal(fileContent.goal, max_index);
     cout << endl;
     int limit_index = max_index;
@@ -392,42 +404,11 @@ int main()
     {
         expressions.push_back(parser(fileContent.expressions[i], max_index, slack_variables));
     }
-    B.clear();
-    N.clear();
-    B = expressions;
-    b.push_back(vector<double>());
-    for (int i = 1; i <= goal.size(); i++)
-    {
-        B_index.push_back(i);
-    }
+    int countSlack = slack_variables.size();    
+    int basic_variables = goal.size();
+    writeInfosAtFile(countSlack, basic_variables);
+    addSlackVariables(expressions, b, slack_variables, limit_index, goal, haveOneBiggerThanZero);
+    writeVectorAtFileB(b);
     writeMatrixAtFile(expressions);
     writeVectorAtFileC(goal);
-    writeVectorAtFileB(b[0]);
-    addSlackVariables(expressions, b[0], N, slack_variables, limit_index, goal, haveOneBiggerThanZero);
-    vector<vector<double>> aux(b[0].size(), vector<double>(1, 0.0));
-    // Cria um vetor com os índices das variáveis não básicas
-    for (int i = 0; i < b[0].size(); i++)
-    {
-        aux[i][0] = b[0][i];
-    }
-    b.clear();
-    b = aux;
-    // Cria um vetor com os índices das variáveis básicas
-    for (int i = B_index.size()+1; i <= goal.size(); i++)
-    {
-        N_index.push_back(i);
-    }
-    // Troca colunas se necessário
-    int i = 0, j = 0;
-    while (B_index.size() < B.size())
-    {
-        B_index.push_back(N_index[i]);
-        N_index.erase(N_index.begin());
-        for (j = 0; j < N.size(); j++)
-        {
-            B[j].push_back(N[j][i]);
-            N[j].erase(N[j].begin(), N[j].begin() + 1);
-        }
-        i++;
-    }
 }
